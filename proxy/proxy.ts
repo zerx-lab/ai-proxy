@@ -10,6 +10,7 @@ import {
   rewriteBody,
   parseUsageFromJson,
   parseUsageFromSse,
+  restoreToolNames,
   type Usage,
 } from "./upstream";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -74,7 +75,12 @@ export const messages = api.raw(
     }
 
     const rawBody = await readBody(req);
-    const { body, model, stream } = rewriteBody(rawBody);
+    const sessionHeader = req.headers["x-session-id"];
+    const sessionId = typeof sessionHeader === "string" ? sessionHeader : undefined;
+    const { body, model, stream, toolNameRewrite } = rewriteBody(rawBody, {
+      accountUuid: account.accountUuid,
+      sessionId,
+    });
 
     let upstream: Response;
     try {
@@ -105,14 +111,27 @@ export const messages = api.raw(
       resp.end();
     } else if (stream && contentType.includes("event-stream")) {
       // Tee the SSE stream: forward to client while accumulating for usage parsing.
+      // Restore renamed tool names per complete line so a fake name can't be split
+      // across chunk boundaries.
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       let captured = "";
+      let pending = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        resp.write(Buffer.from(value));
-        captured += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        captured += chunk;
+        pending += chunk;
+        const nl = pending.lastIndexOf("\n");
+        if (nl >= 0) {
+          const flush = pending.slice(0, nl + 1);
+          pending = pending.slice(nl + 1);
+          resp.write(toolNameRewrite ? restoreToolNames(flush, toolNameRewrite) : flush);
+        }
+      }
+      if (pending.length > 0) {
+        resp.write(toolNameRewrite ? restoreToolNames(pending, toolNameRewrite) : pending);
       }
       resp.end();
       usage = parseUsageFromSse(captured);
@@ -120,9 +139,10 @@ export const messages = api.raw(
       if (status >= 400) errorMessage = captured.slice(0, 500);
     } else {
       const text = await upstream.text();
-      resp.end(text);
+      const restored = toolNameRewrite ? restoreToolNames(text, toolNameRewrite) : text;
+      resp.end(restored);
       usage = parseUsageFromJson(text);
-      responseBody = cap(text);
+      responseBody = cap(restored);
       if (status >= 400) errorMessage = text.slice(0, 500);
     }
 

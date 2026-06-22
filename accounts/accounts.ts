@@ -188,6 +188,7 @@ export interface SelectedAccount {
   id: number;
   authType: string;
   credential: string; // access_token (oauth) or apiKey
+  accountUuid: string | null; // upstream account uuid, for metadata.user_id mimicry
 }
 
 const REFRESH_SKEW_MS = 60_000; // refresh 1min before expiry
@@ -242,7 +243,7 @@ export async function selectAccount(): Promise<SelectedAccount | null> {
   }
 
   await db.update(schema.accounts).set({ lastUsedAt: new Date() }).where(eq(schema.accounts.id, acc.id));
-  return { id: acc.id, authType: acc.authType, credential };
+  return { id: acc.id, authType: acc.authType, credential, accountUuid: acc.accountUuid ?? null };
 }
 
 async function markError(id: number, msg: string): Promise<void> {
