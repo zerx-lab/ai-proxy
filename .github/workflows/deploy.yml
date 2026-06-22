@@ -146,8 +146,9 @@ jobs:
           # --- sync repo (compose file + Dockerfiles only; images are prebuilt) ---
           echo "==> fetching origin"
           git fetch --prune origin
-          echo "==> hard reset to origin/$DEPLOY_BRANCH"
-          git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+          echo "==> hard reset to origin/$DEPLOY_BRANCH (discard local changes)"
+          git reset --hard "origin/$DEPLOY_BRANCH"
+          git checkout -f -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
           git reset --hard "origin/$DEPLOY_BRANCH"
 
           COMPOSE="deploy/docker-compose.yml"
