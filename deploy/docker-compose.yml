@@ -42,6 +42,7 @@ services:
       # Consumed via $env refs in infra-config.json (baked into the image at build).
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY:?set KEY_ENCRYPTION_KEY in .env}
       PORT: 8080
       # Optional: route Anthropic-bound traffic through an allowed-region proxy
       # when the host IP is geo-blocked (403 "Request not allowed").

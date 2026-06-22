@@ -25,6 +25,7 @@
     }
   ],
   "secrets": {
-    "JWTSecret": { "$env": "JWT_SECRET" }
+    "JWTSecret": { "$env": "JWT_SECRET" },
+    "KeyEncryptionKey": { "$env": "KEY_ENCRYPTION_KEY" }
   }
 }

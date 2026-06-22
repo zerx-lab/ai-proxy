@@ -35,6 +35,7 @@ if [ ! -f "$ENV_FILE" ]; then
   {
     echo "DB_PASSWORD=$(encore rand bytes 24 -f hex 2>/dev/null || openssl rand -hex 24)"
     echo "JWT_SECRET=$(encore rand bytes 32 -f hex 2>/dev/null || openssl rand -hex 32)"
+    echo "KEY_ENCRYPTION_KEY=$(encore rand bytes 32 -f hex 2>/dev/null || openssl rand -hex 32)"
     echo "APP_PORT=8080"
     echo "FRONTEND_PORT=3000"
     # Backend URL the browser calls. For remote/production, change to your
