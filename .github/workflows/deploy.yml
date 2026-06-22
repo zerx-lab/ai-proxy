@@ -1,0 +1,83 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & deploy via docker compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve deploy branch
+        id: branch
+        run: echo "name=${DEPLOY_BRANCH:-main}" >> "$GITHUB_OUTPUT"
+        env:
+          DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+
+      - name: Deploy over SSH
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' DEPLOY_BRANCH='$DEPLOY_BRANCH' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          # --- locate repo ---------------------------------------------------
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            echo "error: $DEPLOY_PATH is not a git checkout" >&2
+            exit 1
+          fi
+          cd "$DEPLOY_PATH"
+
+          # --- ensure docker is available -----------------------------------
+          command -v docker >/dev/null 2>&1 || { echo "error: docker not installed on host" >&2; exit 1; }
+          docker compose version >/dev/null 2>&1 || { echo "error: docker compose plugin missing on host" >&2; exit 1; }
+
+          # --- ensure encore CLI is available (selfhost.sh requires it) ------
+          if ! command -v encore >/dev/null 2>&1; then
+            echo "==> installing encore CLI"
+            curl -fsSL https://encore.dev/install.sh | bash
+          fi
+          export PATH="$HOME/.encore/bin:$PATH"
+          command -v encore >/dev/null 2>&1 || { echo "error: encore CLI unavailable after install" >&2; exit 1; }
+
+          # --- sync to target branch ----------------------------------------
+          echo "==> fetching origin"
+          git fetch --prune origin
+          echo "==> hard reset to origin/$DEPLOY_BRANCH"
+          git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+          git reset --hard "origin/$DEPLOY_BRANCH"
+
+          # --- build + (re)launch the docker compose stack ------------------
+          # selfhost.sh: generates deploy/.env on first run, regenerates drizzle
+          # migrations, builds the Encore app image, then `docker compose up -d`.
+          echo "==> running deploy/selfhost.sh"
+          chmod +x deploy/selfhost.sh
+          ./deploy/selfhost.sh
+          REMOTE
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ steps.branch.outputs.name }}
