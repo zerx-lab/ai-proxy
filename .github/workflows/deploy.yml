@@ -10,17 +10,97 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  REGISTRY: ghcr.io
+  # ghcr image repo prefix, lowercased owner/repo-style namespace.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ai-proxy
+
 jobs:
+  build-push:
+    name: Build & push images to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      app_image: ${{ steps.tags.outputs.app }}
+      migrate_image: ${{ steps.tags.outputs.migrate }}
+      frontend_image: ${{ steps.tags.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          prefix="$(echo "$IMAGE_PREFIX" | tr '[:upper:]' '[:lower:]')"
+          sha="${GITHUB_SHA::12}"
+          {
+            echo "prefix=$prefix"
+            echo "sha=$sha"
+            echo "app=$prefix-app:$sha"
+            echo "migrate=$prefix-migrate:$sha"
+            echo "frontend=$prefix-frontend:$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate drizzle migrations
+        run: npm run db:generate
+
+      - name: Install Encore CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL https://encore.dev/install.sh | bash
+          echo "$HOME/.encore/bin" >> "$GITHUB_PATH"
+
+      - name: Build & push app image (encore)
+        run: |
+          set -euo pipefail
+          app="${{ steps.tags.outputs.app }}"
+          latest="${{ steps.tags.outputs.prefix }}-app:latest"
+          encore build docker --config deploy/infra-config.json "$app"
+          docker tag "$app" "$latest"
+          docker push "$app"
+          docker push "$latest"
+
+      - name: Build & push migrate image
+        run: |
+          set -euo pipefail
+          img="${{ steps.tags.outputs.migrate }}"
+          latest="${{ steps.tags.outputs.prefix }}-migrate:latest"
+          docker build -f deploy/Dockerfile.migrate -t "$img" -t "$latest" .
+          docker push "$img"
+          docker push "$latest"
+
+      - name: Build & push frontend image
+        run: |
+          set -euo pipefail
+          img="${{ steps.tags.outputs.frontend }}"
+          latest="${{ steps.tags.outputs.prefix }}-frontend:latest"
+          docker build -f deploy/Dockerfile.frontend -t "$img" -t "$latest" .
+          docker push "$img"
+          docker push "$latest"
+
   deploy:
-    name: Build & deploy via docker compose
+    name: Deploy over SSH (compose pull && up)
+    needs: build-push
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve deploy branch
-        id: branch
-        run: echo "name=${DEPLOY_BRANCH:-main}" >> "$GITHUB_OUTPUT"
-        env:
-          DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
-
       - name: Configure SSH
         run: |
           set -euo pipefail
@@ -39,45 +119,83 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' DEPLOY_BRANCH='$DEPLOY_BRANCH' bash -s" <<'REMOTE'
+            "DEPLOY_PATH='$DEPLOY_PATH' \
+             DEPLOY_BRANCH='$DEPLOY_BRANCH' \
+             APP_IMAGE='$APP_IMAGE' \
+             MIGRATE_IMAGE='$MIGRATE_IMAGE' \
+             FRONTEND_IMAGE='$FRONTEND_IMAGE' \
+             REGISTRY='$REGISTRY' \
+             GHCR_USER='$GHCR_USER' \
+             GHCR_PAT='$GHCR_PAT' \
+             bash -s" <<'REMOTE'
           set -euo pipefail
 
-          # --- locate repo ---------------------------------------------------
           if [ ! -d "$DEPLOY_PATH/.git" ]; then
             echo "error: $DEPLOY_PATH is not a git checkout" >&2
             exit 1
           fi
           cd "$DEPLOY_PATH"
 
-          # --- ensure docker is available -----------------------------------
           command -v docker >/dev/null 2>&1 || { echo "error: docker not installed on host" >&2; exit 1; }
           docker compose version >/dev/null 2>&1 || { echo "error: docker compose plugin missing on host" >&2; exit 1; }
 
-          # --- ensure encore CLI is available (selfhost.sh requires it) ------
-          if ! command -v encore >/dev/null 2>&1; then
-            echo "==> installing encore CLI"
-            curl -fsSL https://encore.dev/install.sh | bash
-          fi
-          export PATH="$HOME/.encore/bin:$PATH"
-          command -v encore >/dev/null 2>&1 || { echo "error: encore CLI unavailable after install" >&2; exit 1; }
-
-          # --- sync to target branch ----------------------------------------
+          # --- sync repo (compose file + Dockerfiles only; images are prebuilt) ---
           echo "==> fetching origin"
           git fetch --prune origin
           echo "==> hard reset to origin/$DEPLOY_BRANCH"
           git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
           git reset --hard "origin/$DEPLOY_BRANCH"
 
-          # --- build + (re)launch the docker compose stack ------------------
-          # selfhost.sh: generates deploy/.env on first run, regenerates drizzle
-          # migrations, builds the Encore app image, then `docker compose up -d`.
-          echo "==> running deploy/selfhost.sh"
-          chmod +x deploy/selfhost.sh
-          ./deploy/selfhost.sh
+          COMPOSE="deploy/docker-compose.yml"
+          ENV_FILE="deploy/.env"
+
+          # --- first-run secrets (DB_PASSWORD / JWT_SECRET / ports / BACKEND_URL) ---
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "==> generating $ENV_FILE with fresh secrets"
+            {
+              echo "DB_PASSWORD=$(openssl rand -hex 24)"
+              echo "JWT_SECRET=$(openssl rand -hex 32)"
+              echo "APP_PORT=8080"
+              echo "FRONTEND_PORT=3000"
+              echo "BACKEND_URL=http://localhost:8080"
+            } > "$ENV_FILE"
+            echo "    (edit $ENV_FILE: set BACKEND_URL to your public address)"
+          fi
+
+          # --- pin image refs for this deploy (overwrite prior image lines) ---
+          sed -i '/^APP_IMAGE=/d;/^MIGRATE_IMAGE=/d;/^FRONTEND_IMAGE=/d' "$ENV_FILE"
+          {
+            echo "APP_IMAGE=$APP_IMAGE"
+            echo "MIGRATE_IMAGE=$MIGRATE_IMAGE"
+            echo "FRONTEND_IMAGE=$FRONTEND_IMAGE"
+          } >> "$ENV_FILE"
+
+          # --- authenticate to GHCR if a PAT was provided (skip for public images) ---
+          if [ -n "${GHCR_PAT:-}" ]; then
+            echo "==> docker login $REGISTRY"
+            echo "$GHCR_PAT" | docker login "$REGISTRY" -u "$GHCR_USER" --password-stdin
+          fi
+
+          # --- pull prebuilt images, then (re)launch stack ---
+          echo "==> docker compose pull"
+          docker compose -f "$COMPOSE" --env-file "$ENV_FILE" pull app migrate frontend db
+          echo "==> docker compose up -d"
+          docker compose -f "$COMPOSE" --env-file "$ENV_FILE" up -d --remove-orphans
+
+          # --- drop dangling old images ---
+          docker image prune -f >/dev/null 2>&1 || true
+
+          echo "==> deployed: $APP_IMAGE"
           REMOTE
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_BRANCH: ${{ steps.branch.outputs.name }}
+          DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH || 'main' }}
+          APP_IMAGE: ${{ needs.build-push.outputs.app_image }}
+          MIGRATE_IMAGE: ${{ needs.build-push.outputs.migrate_image }}
+          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+          REGISTRY: ${{ env.REGISTRY }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
