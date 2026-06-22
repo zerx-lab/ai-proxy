@@ -1,0 +1,299 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design tokens. Apple-inspired glass + precise, sharp-edged 2026 aesthetic.
+   Theme switches by [data-theme] on <html>; everything reads CSS variables.
+--------------------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  --bg: #07080c;
+  --bg-grad-a: #0b0e16;
+  --bg-grad-b: #06070b;
+  --surface: rgba(22, 26, 38, 0.55);
+  --surface-strong: rgba(28, 33, 48, 0.78);
+  --surface-hover: rgba(40, 46, 66, 0.6);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #eef1f7;
+  --text-muted: #9aa3b5;
+  --text-faint: #626b80;
+  --accent: #5b8cff;
+  --accent-hover: #6f9bff;
+  --accent-soft: rgba(91, 140, 255, 0.16);
+  --accent-text: #cdddff;
+  --danger: #ff5a6a;
+  --danger-soft: rgba(255, 90, 106, 0.16);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.16);
+  --warning: #fbbf24;
+  --shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  --blur: 22px;
+}
+
+:root[data-theme='light'] {
+  --bg: #eef1f7;
+  --bg-grad-a: #f6f8fc;
+  --bg-grad-b: #e4e9f2;
+  --surface: rgba(255, 255, 255, 0.62);
+  --surface-strong: rgba(255, 255, 255, 0.82);
+  --surface-hover: rgba(255, 255, 255, 0.92);
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --text: #0f172a;
+  --text-muted: #51607a;
+  --text-faint: #8995ab;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent-text: #1d4ed8;
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.12);
+  --warning: #d97706;
+  --shadow: 0 8px 40px rgba(15, 23, 42, 0.12);
+  --blur: 22px;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-radius: 0;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+  html[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 800px at 12% -10%, var(--accent-soft), transparent 60%),
+      radial-gradient(900px 700px at 110% 10%, rgba(120, 90, 255, 0.1), transparent 55%),
+      linear-gradient(160deg, var(--bg-grad-a), var(--bg-grad-b));
+    background-attachment: fixed;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI',
+      'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    transition: color 0.25s ease, background 0.4s ease;
+  }
+
+  input,
+  textarea,
+  select {
+    width: 100%;
+    background: var(--surface-strong);
+    border: 1px solid var(--border);
+    padding: 0.55rem 0.75rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-faint);
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.18s ease;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+@layer components {
+  /* Glass surface primitive */
+  .glass {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(var(--blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(var(--blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+  /* Subtle top highlight, Apple glass style */
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--border-strong),
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    border: 1px solid transparent;
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    background: var(--surface-strong);
+    color: var(--text);
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+  }
+  .btn-secondary:disabled {
+    opacity: 0.5;
+  }
+
+  .btn-danger {
+    background: var(--danger);
+    color: #fff;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    border: 1px solid transparent;
+  }
+  .btn-danger:hover {
+    filter: brightness(1.08);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    padding: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-ghost:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    transition: all 0.16s ease;
+  }
+  .nav-link:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+  .nav-link-active {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    border-color: var(--border-strong);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  .audit-row {
+    transition: background 0.15s ease;
+  }
+  .audit-row:hover {
+    background: var(--surface-hover);
+  }
+
+  .ui-switch {
+    position: relative;
+    display: inline-flex;
+    height: 24px;
+    width: 44px;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-strong);
+    transition: background 0.2s ease;
+  }
+  .ui-switch[data-state='checked'] {
+    background: var(--accent);
+    border-color: transparent;
+  }
+  .ui-switch:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .ui-switch-thumb {
+    pointer-events: none;
+    display: block;
+    height: 18px;
+    width: 18px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transform: translateX(2px) translateY(2px);
+    transition: transform 0.2s ease;
+  }
+  .ui-switch[data-state='checked'] .ui-switch-thumb {
+    transform: translateX(22px) translateY(2px);
+  }
+
+  .acc-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.16s ease;
+  }
+  .acc-tab[data-state='active'] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+}
+
+/* Theme/lang/scrollbar polish */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

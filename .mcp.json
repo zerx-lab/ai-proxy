@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "encore": {
+      "type": "stdio",
+      "command": "encore",
+      "args": ["mcp", "run", "--app=b6uw6"]
+    }
+  }
+}

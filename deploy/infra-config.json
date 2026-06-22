@@ -1,0 +1,30 @@
+{
+  "$schema": "https://encore.dev/schemas/infra.schema.json",
+  "metadata": {
+    "app_id": "ai-proxy",
+    "env_name": "selfhost",
+    "env_type": "production",
+    "cloud": "local",
+    "base_url": "http://localhost:8080"
+  },
+  "graceful_shutdown": {
+    "total": 30
+  },
+  "sql_servers": [
+    {
+      "host": "db:5432",
+      "tls_config": {
+        "disabled": true
+      },
+      "databases": {
+        "gateway": {
+          "username": "gateway",
+          "password": { "$env": "DB_PASSWORD" }
+        }
+      }
+    }
+  ],
+  "secrets": {
+    "JWTSecret": { "$env": "JWT_SECRET" }
+  }
+}

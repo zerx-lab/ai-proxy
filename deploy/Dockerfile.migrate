@@ -1,0 +1,9 @@
+# Tiny one-shot image that applies drizzle migrations to the target Postgres.
+FROM node:slim
+WORKDIR /app
+# Only the deps the migrator needs.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY db/migrations ./db/migrations
+COPY deploy/migrate.mjs ./deploy/migrate.mjs
+CMD ["node", "deploy/migrate.mjs"]
