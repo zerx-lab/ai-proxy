@@ -7,3 +7,4 @@ node_modules
 .secrets.local.cue
 *.local.cue
 *.tsbuildinfo
+frontend/dist

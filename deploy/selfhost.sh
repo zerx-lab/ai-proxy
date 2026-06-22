@@ -22,7 +22,7 @@ case "$cmd" in
     docker compose -f "$COMPOSE" --env-file "$ENV_FILE" down
     exit 0 ;;
   logs)
-    docker compose -f "$COMPOSE" --env-file "$ENV_FILE" logs -f app
+    docker compose -f "$COMPOSE" --env-file "$ENV_FILE" logs -f app frontend
     exit 0 ;;
 esac
 
@@ -36,6 +36,10 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "DB_PASSWORD=$(encore rand bytes 24 -f hex 2>/dev/null || openssl rand -hex 24)"
     echo "JWT_SECRET=$(encore rand bytes 32 -f hex 2>/dev/null || openssl rand -hex 32)"
     echo "APP_PORT=8080"
+    echo "FRONTEND_PORT=3000"
+    # Backend URL the browser calls. For remote/production, change to your
+    # public address, e.g. https://gateway.example.com (or your host IP:port).
+    echo "BACKEND_URL=http://localhost:8080"
   } > "$ENV_FILE"
   echo "    (keep $ENV_FILE safe; it holds your DB password + JWT signing key)"
 fi
@@ -53,8 +57,13 @@ echo "==> starting stack"
 docker compose -f "$COMPOSE" --env-file "$ENV_FILE" up -d --build
 
 PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
+FPORT="$(grep -E '^FRONTEND_PORT=' "$ENV_FILE" | cut -d= -f2)"
 echo
-echo "Backend is starting on http://localhost:${PORT:-8080}"
+echo "Backend  on http://localhost:${PORT:-8080}"
 echo "  health:  curl http://localhost:${PORT:-8080}/healthz"
+echo "Frontend on http://localhost:${FPORT:-3000}"
 echo "  first signup at /auth/signup becomes the admin account."
+echo
+echo "Remote deploy: set BACKEND_URL in $ENV_FILE to your public address,"
+echo "then re-run: docker compose -f $COMPOSE --env-file $ENV_FILE up -d"
 echo "Tail logs with: ./deploy/selfhost.sh logs"

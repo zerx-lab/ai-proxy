@@ -24,8 +24,8 @@ auth/      注册/登录、JWT 鉴权 handler + gateway、/auth/me
 keys/      SK 的增删改查 + 反代用的 SK 校验
 accounts/  Claude OAuth 两种模式、token 刷新、账号池选择
 proxy/     /v1/messages 反代核心、上游头改写、SSE 透传、审计、/audit 查询
-frontend/  TanStack Start + Radix UI + Tailwind + Vite(独立 package)
-deploy/    自托管:docker-compose、infra-config、一键脚本、迁移
+frontend/  TanStack Start SSR + Radix UI + Tailwind + Vite(独立 package、生产含 Node 启动器)
+deploy/    自托管:docker-compose、infra-config、一键脚本、迁移、前后端 Dockerfile
 ```
 
 ## 本地开发
@@ -59,20 +59,44 @@ cd frontend && npm run typecheck && npm run build
 
 ## 自托管(一键迁移 + 运行)
 
-需要 `docker` 与 `encore` CLI。脚本会:生成密钥 → 生成迁移 → 构建 Encore 镜像 →
-起 Postgres + 迁移(一次性)+ 后端服务。
+需要 `docker` 与 `encore` CLI。`docker compose up` 会一并构建并启动:
+Postgres → 一次性迁移 → 后端服务(`app`)→ 前端 SSR(`frontend`)。脚本负责:
+生成密钥/端口/后端地址 → 生成迁移 → 构建 Encore 后端镜像 → 拉起整套栈。
 
 ```bash
-./deploy/selfhost.sh          # 构建并启动整套(后端默认 8080 端口)
-./deploy/selfhost.sh logs     # 跟随后端日志
+./deploy/selfhost.sh          # 构建并启动整套
+./deploy/selfhost.sh logs     # 跟随 app + frontend 日志
 ./deploy/selfhost.sh down     # 停止
 
-# 首次启动后访问 /auth/signup,第一个账号即为管理员。
+# 默认端口:后端 8080、前端 3000
+# 首次启动后访问前端 http://localhost:3000,在 /login 注册,第一个账号即为管理员。
 curl http://localhost:8080/healthz
 ```
 
 迁移与应用解耦:`deploy/migrate.mjs`(drizzle 迁移器)在一次性 `migrate` 容器中执行,
 完成后 `app` 容器才启动,避免自托管镜像不自动迁移的问题。
+
+### 前端 SSR 与后端地址(关键)
+
+前端是 **TanStack Start SSR**,生产由 `frontend/server-entry.mjs`(Node 原生 server,
+零额外依赖)托管,需 **Node 22+ 运行时**(`@tanstack/react-start` 引擎要求)。
+
+浏览器要访问的后端地址通过 **`.env` 的 `BACKEND_URL` 在运行期注入**到页面
+(`window.__BACKEND_URL__`),改地址**无需重新构建镜像**,重启 `frontend` 容器即可。
+
+> 注意:`BACKEND_URL` 是**浏览器**访问后端的地址,必须是宿主/公网可达地址
+> (如 `http://localhost:8080` 或 `https://gateway.example.com`),**不能**用 compose
+> 服务名 `app`——那只在容器网络内解析。
+
+远程/生产部署:编辑 `deploy/.env` 把 `BACKEND_URL` 改成对外地址,然后:
+
+```bash
+# 改 deploy/.env 后,仅重启前端使新地址生效(无需 rebuild)
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d frontend
+```
+
+`deploy/.env` 可调端口:`APP_PORT`(后端)、`FRONTEND_PORT`(前端)。
+生产建议在前端 + 后端前再挂 Nginx/Caddy 做统一域名与 TLS 终止(仓库未内置)。
 
 ## 客户端接入
 

@@ -49,5 +49,23 @@ services:
     ports:
       - "${APP_PORT:-8080}:8080"
 
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    image: ai-proxy-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      # Backend base URL the BROWSER will call. Must be reachable from the
+      # user's browser (host/public address), NOT the compose service name
+      # `app` — that only resolves inside the docker network. Injected at
+      # runtime into the page, so changing it needs no image rebuild.
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8080}
+      PORT: 3000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
 volumes:
   pgdata:

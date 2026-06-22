@@ -1,0 +1,25 @@
+# Multi-stage build for the TanStack Start SSR frontend.
+# Stage 1 installs deps + builds the client + SSR bundles.
+# Stage 2 ships only the runtime: built dist/, the launcher, and production deps.
+#
+# The backend API URL is NOT baked in here — it is injected at runtime by
+# server-entry.mjs from the BACKEND_URL env var, so one image serves any backend.
+
+# ---- builder ----
+FROM node:22-slim AS builder
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install --legacy-peer-deps
+COPY frontend/ ./
+RUN npm run build
+
+# ---- runner ----
+FROM node:22-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
+COPY --from=builder /app/dist ./dist
+COPY frontend/server-entry.mjs ./server-entry.mjs
+EXPOSE 3000
+CMD ["node", "server-entry.mjs"]

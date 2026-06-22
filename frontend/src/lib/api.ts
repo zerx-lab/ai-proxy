@@ -2,8 +2,25 @@
 // Typed API client — single place that injects base URL + Bearer token
 // ---------------------------------------------------------------------------
 
-export const BASE_URL: string =
-  (import.meta.env as Record<string, string>).VITE_API_URL ?? 'http://localhost:4000'
+// Backend base URL resolution, in priority order:
+//   1. window.__BACKEND_URL__  — injected at runtime by the SSR server from its
+//      process env (BACKEND_URL). Lets one built image target any backend via .env.
+//   2. import.meta.env.VITE_API_URL — build-time inlined; dev + static-hosting fallback.
+//   3. localhost default — local `vite dev`.
+declare global {
+  interface Window {
+    __BACKEND_URL__?: string
+  }
+}
+
+function resolveBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.__BACKEND_URL__) {
+    return window.__BACKEND_URL__
+  }
+  return (import.meta.env as Record<string, string>).VITE_API_URL ?? 'http://localhost:4000'
+}
+
+export const BASE_URL: string = resolveBaseUrl()
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null
